@@ -1,0 +1,9 @@
+#Comando para enviar un mensaje con Windows PowerShell
+
+$headers = @{ "Content-Type" = "application/json" }
+$body = '{"value":"MTIzIGEgdmVy"}','{"offset": "0"}
+
+$response = Invoke-RestMethod -Uri http://localhost:8080/write -Method POST -Headers $headers -Body $body
+
+#Para recibir
+$response 

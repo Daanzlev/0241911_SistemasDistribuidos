@@ -1,11 +1,15 @@
 package log
 
 import (
+	"github.com/stretchr/testify/require"
+	"lab2/Store"
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"encoding/binary"
 )
+
+const lenWidth = 8 // Assuming lenWidth is a constant with a value of 8
 
 var (
 	write = []byte("hello world")
@@ -17,18 +21,18 @@ func TestStoreAppendRead(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	s, err := newStore(f)
+	s, err := Store.NewStore(f)
 	require.NoError(t, err)
 
 	testAppend(t, s)
 	testRead(t, s)
 	testReadAt(t, s)
-	s, err = newStore(f)
+	s, err = Store.NewStore(f)
 	require.NoError(t, err)
 	testRead(t, s)
 }
 
-func testAppend(t *testing.T, s *store) {
+func testAppend(t *testing.T, s *Store.Store) {
 	t.Helper()
 	for i := uint64(1); i < 4; i++ {
 		n, pos, err := s.Append(write)
@@ -37,18 +41,18 @@ func testAppend(t *testing.T, s *store) {
 	}
 }
 
-func testRead(t *testing.T, s *store) {
+func testRead(t *testing.T, s *Store.Store) {
 	t.Helper()
 	var pos uint64
 	for i := uint64(1); i < 4; i++ {
-		read, err := s.Read(pos)
+		read, err := s.Read(make([]byte, pos))
 		require.NoError(t, err)
 		require.Equal(t, write, read)
 		pos += width
 	}
 }
 
-func testReadAt(t *testing.T, s *store) {
+func testReadAt(t *testing.T, s *Store.Store) {
 	t.Helper()
 	for i, off := uint64(1), int64(0); i < 4; i++ {
 		b := make([]byte, lenWidth)
@@ -57,7 +61,7 @@ func testReadAt(t *testing.T, s *store) {
 		require.Equal(t, lenWidth, n)
 		off += int64(n)
 
-		size := enc.Uint64(b)
+		size := binary.BigEndian.Uint64(b)
 		b = make([]byte, size)
 		n, err = s.ReadAt(b, off)
 		require.NoError(t, err)
@@ -70,7 +74,7 @@ func TestStoreClose(t *testing.T) {
 	f, err := os.CreateTemp("", "store_close_test")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
-	s, err := newStore(f)
+	s, err := Store.NewStore(f)
 	require.NoError(t, err)
 	_, _, err = s.Append(write)
 	require.NoError(t, err)

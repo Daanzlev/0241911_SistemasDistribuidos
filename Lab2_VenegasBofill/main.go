@@ -2,68 +2,53 @@ package main
 
 import (
 	"fmt"
+	"lab2/Store" // Asegúrate de que este sea el nombre correcto del paquete
 	"log"
 	"os"
-
-	"lab2/Index"
-	"lab2/Store"
 )
 
 func main() {
-	// Inicializar el índice
-	idx, err := Index.NewIndex("index_file")
+	// Crear un archivo temporal para usar con Store.
+	file, err := os.Create("testfile.dat")
 	if err != nil {
-		log.Fatalf("No se pudo crear el índice: %v", err)
+		log.Fatalf("Error creating file: %v", err)
 	}
-	defer func() {
-		if err := idx.Close(); err != nil {
-			log.Fatalf("Error al cerrar el índice: %v", err)
-		}
-	}()
+	defer file.Close()
 
-	// Inicializar el store
-	f, err := os.OpenFile("store_file", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	// Crear una nueva instancia de Store.
+	store, err := Store.NewStore(file)
 	if err != nil {
-		log.Fatalf("No se pudo abrir el archivo de store: %v", err)
+		log.Fatalf("Error creating store: %v", err)
 	}
-	st, err := Store.NewStore(f)
-	if err != nil {
-		log.Fatalf("No se pudo crear el store: %v", err)
-	}
-	defer func() {
-		if err := st.Close(); err != nil {
-			log.Fatalf("Error al cerrar el store: %v", err)
-		}
-	}()
+	defer store.Close()
 
-	// Escribir en el store
-	data := []byte("datos de prueba")
-	off, writtenBytes, err := st.Append(data)
+	// Agregar datos al Store.
+	data1 := []byte("Hello, world!")
+	offset1, n1, err := store.Append(data1)
 	if err != nil {
-		log.Fatalf("No se pudo escribir en el store: %v", err)
+		log.Fatalf("Error appending data1: %v", err)
 	}
-	fmt.Printf("Datos escritos en el store, offset %d, bytes escritos %d\n", off, writtenBytes)
+	fmt.Printf("Appended data1 at offset %d, total bytes written: %d\n", offset1, n1)
 
-	// Leer desde el store
-	readBuf := make([]byte, len(data))
-	_, err = st.ReadAt(readBuf, int64(off))
+	data2 := []byte("Another piece of data.")
+	offset2, n2, err := store.Append(data2)
 	if err != nil {
-		log.Fatalf("No se pudo leer del store: %v", err)
+		log.Fatalf("Error appending data2: %v", err)
 	}
-	fmt.Printf("Datos leídos del store: %s\n", string(readBuf))
+	fmt.Printf("Appended data2 at offset %d, total bytes written: %d\n", offset2, n2)
 
-	// Escribir en el índice
-	// Aquí asumimos que el offset cabe en un uint32, si no, podrías necesitar manejarlo diferente
-	err = idx.Write(uint32(off), uint64(off))
+	// Leer los datos del archivo.
+	buf1 := make([]byte, len(data1)+Store.LenWidth)
+	n, err := store.ReadAt(buf1, int64(offset1))
 	if err != nil {
-		log.Fatalf("No se pudo escribir en el índice: %v", err)
+		log.Fatalf("Error reading data1: %v", err)
 	}
-	fmt.Println("Datos escritos en el índice")
+	fmt.Printf("Read %d bytes: %s\n", n, buf1[Store.LenWidth:])
 
-	// Leer desde el índice
-	out, pos, err := idx.Read(-1) // Leer la última entrada escrita
+	buf2 := make([]byte, len(data2)+Store.LenWidth)
+	n, err = store.ReadAt(buf2, int64(offset2))
 	if err != nil {
-		log.Fatalf("No se pudo leer del índice: %v", err)
+		log.Fatalf("Error reading data2: %v", err)
 	}
-	fmt.Printf("Datos leídos del índice: offset %d, posición %d\n", out, pos)
+	fmt.Printf("Read %d bytes: %s\n", n, buf2[Store.LenWidth:])
 }

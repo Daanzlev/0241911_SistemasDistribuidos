@@ -76,12 +76,10 @@ func (l *Log) setup() error {
 func (l *Log) Append(record *api.Record) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
-	off, _, err := l.activeSegment.Append(record) // Capturamos el offset y omitimos el pos
+	off, err := l.activeSegment.Append(record)
 	if err != nil {
 		return 0, err
 	}
-
 	if l.activeSegment.IsFull() {
 		err = l.newSegment(off + 1)
 	}
@@ -94,20 +92,22 @@ func (l *Log) Read(off uint64) (*api.Record, error) {
 	defer l.mu.RUnlock()
 	var s *Segment.Segment
 	for _, segment := range l.segments {
-		if segment.Base <= off && off < segment.Base+segment.Size { // Cambiamos para usar segment.Base y segment.Size
+		if segment.Base <= off && off < segment.next {
 			s = segment
 			break
 		}
 	}
-	if s == nil {
+	// START: before
+	if s == nil || s.next <= off {
 		return nil, fmt.Errorf("offset out of range: %d", off)
 	}
+	// END: before
 	return s.Read(off)
 }
 
 // newSegment crea un nuevo segmento en el log.
 func (l *Log) newSegment(off uint64) error {
-	s, err := Segment.NewSegment(l.Dir, off, l.Config.Segment)
+	s, err := Segment.NewSegment(l.Dir, off, l.Config)
 	if err != nil {
 		return err
 	}

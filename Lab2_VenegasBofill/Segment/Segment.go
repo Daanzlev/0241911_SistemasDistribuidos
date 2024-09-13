@@ -3,6 +3,7 @@ package Segment
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/golang/protobuf/proto"
@@ -14,70 +15,70 @@ import (
 	api "lab2/api/v1"
 )
 
-const (
-	MaxStoreBytes = 1024 // Tamaño máximo del segmento en bytes
-)
-
 type Segment struct {
-	Store  *Store.Store
-	Index  *Index.Index
-	Base   uint64               // Base offset del segmento
-	Size   uint64               // Tamaño actual del segmento
-	Config Config.SegmentConfig // Añadir la configuración aquí
+	Store      *Store.Store
+	Index      *Index.Index
+	Base, next uint64
+	Config     Config.Config
 }
 
-func NewSegment(dir string, base uint64, cfg Config.SegmentConfig) (*Segment, error) {
-	storeFile, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("%d.store", base)), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	store, err := Store.NewStore(storeFile)
-	if err != nil {
-		return nil, err
-	}
-
-	indexFile, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("%d.index", base)), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	index, err := Index.NewIndex(indexFile.Name())
-	if err != nil {
-		return nil, err
-	}
-
-	return &Segment{
-		Store:  store,
-		Index:  index,
+func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
+	s := &Segment{
 		Base:   base,
-		Size:   0,
-		Config: cfg,
-	}, nil
+		Config: c,
+	}
+	var err error
+	storeFile, err := os.OpenFile(
+		path.Join(dir, fmt.Sprintf("%d%s", base, ".store")),
+		os.O_RDWR|os.O_CREATE|os.O_APPEND,
+		0644,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if s.Store, err = Store.NewStore(storeFile); err != nil {
+		return nil, err
+	}
+	indexFile, err := os.OpenFile(
+		path.Join(dir, fmt.Sprintf("%d%s", base, ".index")),
+		os.O_RDWR|os.O_CREATE,
+		0644,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if s.Index, err = Index.NewIndex(indexFile, c); err != nil {
+		return nil, err
+	}
+	if off, _, err := s.Index.Read(-1); err != nil {
+		s.next = base
+	} else {
+		s.next = base + uint64(off) + 1
+	}
+	return s, nil
 }
 
 // Append agrega un nuevo registro al segmento y devuelve el offset del registro
-func (s *Segment) Append(record *api.Record) (uint64, uint64, error) {
-	if s.Size >= s.Config.MaxStoreBytes {
-		return 0, 0, fmt.Errorf("segment full")
-	}
-
-	// Convertir el record a []byte
-	data, err := proto.Marshal(record)
+func (s *Segment) Append(record *api.Record) (off uint64, err error) {
+	cur := s.next
+	record.Offset = cur
+	p, err := proto.Marshal(record)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
-
-	pos, n, err := s.Store.Append(data)
+	_, pos, err := s.Store.Append(p)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
-
-	err = s.Index.Write(uint32(s.Base+s.Size), pos)
-	if err != nil {
-		return 0, 0, err
+	if err = s.Index.Write(
+		// index offsets are relative to base offset
+		uint32(s.next-uint64(s.Base)),
+		pos,
+	); err != nil {
+		return 0, err
 	}
-
-	s.Size += n
-	return s.Base + s.Size - n, pos, nil
+	s.next++
+	return cur, nil
 }
 
 // Read lee un registro del segmento dado un offset
@@ -103,7 +104,8 @@ func (s *Segment) Read(off uint64) (*api.Record, error) {
 
 // IsFull verifica si el segmento ha alcanzado su capacidad máxima
 func (s *Segment) IsFull() bool {
-	return s.Size >= s.Config.MaxStoreBytes
+	return s.Store.size >= s.Config.Segment.MaxStoreBytes ||
+		s.Index.size >= s.Config.Segment.MaxIndexBytes
 }
 
 // Remove elimina el segmento del sistema de archivos
@@ -132,4 +134,10 @@ func (s *Segment) Close() error {
 		return err
 	}
 	return s.Index.Close()
+}
+func Nearest(j, k uint64) uint64 {
+	if j >= 0 {
+		return (j / k) * k
+	}
+	return ((j / k) - 1) * k
 }

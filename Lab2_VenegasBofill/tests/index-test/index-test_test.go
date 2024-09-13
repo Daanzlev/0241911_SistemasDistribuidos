@@ -1,34 +1,28 @@
-package Log
+package log
 
 import (
 	"io"
+	"lab2/Config"
+	"lab2/Index"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"lab2/Config" // Ajusta esta importación si tu configuración está en otro paquete
-	"lab2/Index"
 )
 
 func TestIndex(t *testing.T) {
-	// Crear un archivo temporal para el índice
-	f, err := os.CreateTemp("", "index_test")
+	f, err := os.CreateTemp(os.TempDir(), "index_test")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	// Configuración de prueba
-	cfg := Config.Config{}
-	cfg.Segment.MaxIndexBytes = 1024
-
-	// Abrir el archivo como nombre de archivo para el índice
-	idx, err := Index.NewIndex(f.Name()) // Usa el nombre del archivo
+	c := Config.Config{}
+	c.Segment.MaxIndexBytes = 1024
+	idx, err := Index.NewIndex(f, c)
 	require.NoError(t, err)
-
-	// Leer del índice vacío debe devolver un error
 	_, _, err = idx.Read(-1)
 	require.Error(t, err)
+	require.Equal(t, f.Name(), idx.FileName())
 
-	// Entradas de prueba para escribir y leer
 	entries := []struct {
 		Off uint32
 		Pos uint64
@@ -44,21 +38,15 @@ func TestIndex(t *testing.T) {
 		require.Equal(t, want.Pos, pos)
 	}
 
-	// Leer más allá de las entradas existentes debe devolver io.EOF
+	// index and scanner should error when reading past existing entries
 	_, _, err = idx.Read(int64(len(entries)))
 	require.Equal(t, io.EOF, err)
+	_ = idx.Close()
 
-	// Cerrar el índice
-	err = idx.Close()
+	// index should build its state from the existing file
+	f, _ = os.OpenFile(f.Name(), os.O_RDWR, 0600)
+	idx, err = Index.NewIndex(f, c)
 	require.NoError(t, err)
-
-	// Reabrir el archivo y reconstruir el índice
-	f, err = os.OpenFile(f.Name(), os.O_RDWR, 0600)
-	require.NoError(t, err)
-	idx, err = Index.NewIndex(f.Name()) // Usa el nombre del archivo
-	require.NoError(t, err)
-
-	// Leer los valores del índice reconstruido
 	off, pos, err := idx.Read(-1)
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), off)

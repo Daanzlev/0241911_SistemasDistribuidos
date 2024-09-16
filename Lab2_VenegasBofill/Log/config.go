@@ -1,4 +1,4 @@
-package Config
+package Log
 
 //import "lab2/Segment"
 

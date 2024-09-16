@@ -1,9 +1,8 @@
-package Index
+package Log
 
 import (
 	"encoding/binary"
 	"io"
-	"lab2/Config"
 	"os"
 
 	"github.com/tysonmote/gommap"
@@ -21,7 +20,7 @@ type Index struct {
 	Size uint64
 }
 
-func NewIndex(pf *os.File, c Config.Config) (*Index, error) {
+func NewIndex(pf *os.File, c Config) (*Index, error) {
 	idx := &Index{
 		file: pf,
 	}

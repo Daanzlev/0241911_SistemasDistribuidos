@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	api "lab2/api/v1"
+	api "lab3/api/v2"
 )
 
 type Log struct {

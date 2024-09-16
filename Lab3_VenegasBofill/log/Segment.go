@@ -1,4 +1,4 @@
-package Segment
+package Log
 
 import (
 	"fmt"
@@ -8,23 +8,19 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"lab2/Config"
-	"lab2/Index"
-	"lab2/Store"
-
-	api "lab2/api/v1"
+	api "lab3/api/v2"
 )
 
 type Segment struct {
-	Store   *Store.Store
-	Index   *Index.Index
+	Store   *Store
+	Index   *Index
 	Base    uint64
 	NextOff uint64
-	Config  Config.Config
+	Config  Config
 	Size    uint64
 }
 
-func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
+func NewSegment(dir string, base uint64, c Config) (*Segment, error) {
 	s := &Segment{
 		Base:   base,
 		Config: c,
@@ -38,7 +34,7 @@ func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.Store, err = Store.NewStore(storeFile); err != nil {
+	if s.Store, err = NewStore(storeFile); err != nil {
 		return nil, err
 	}
 	indexFile, err := os.OpenFile(
@@ -49,7 +45,7 @@ func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.Index, err = Index.NewIndex(indexFile, c); err != nil {
+	if s.Index, err = NewIndex(indexFile, c); err != nil {
 		return nil, err
 	}
 	if off, _, err := s.Index.Read(-1); err != nil {
@@ -90,7 +86,7 @@ func (s *Segment) Read(off uint64) (*api.Record, error) {
 		return nil, err
 	}
 
-	data := make([]byte, Store.LenWidth)
+	data := make([]byte, LenWidth)
 	_, err = s.Store.ReadAt(data, int64(pos))
 	if err != nil {
 		return nil, err

@@ -1,13 +1,10 @@
-package Store
+package Log
 
 import (
 	"bytes"
-	"lab2/Store"
 	"os"
 	"testing"
 )
-
-const LenWidth = 8 // Define LenWidth as a constant
 
 func TestStore(t *testing.T) {
 	// Crear un archivo temporal para usar con Store.
@@ -19,7 +16,7 @@ func TestStore(t *testing.T) {
 	defer os.Remove("testfile.dat") // Eliminar el archivo después de las pruebas.
 
 	// Crear una nueva instancia de Store.
-	store, err := Store.NewStore(file)
+	store, err := NewStore(file)
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)
 	}

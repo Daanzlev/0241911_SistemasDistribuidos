@@ -1,4 +1,4 @@
-package Store
+package Log
 
 import (
 	"bufio"

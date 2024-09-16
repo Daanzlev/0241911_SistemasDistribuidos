@@ -1,4 +1,4 @@
-package Log
+package Log2
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	api "lab3/api/v2"
+	api "lab3/api/v1"
 )
 
 type Log struct {

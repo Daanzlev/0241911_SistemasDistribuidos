@@ -1,4 +1,4 @@
-package Log
+package Log2
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	api "lab3/api/v2"
+	api "lab3/api/v1"
 )
 
 type Segment struct {

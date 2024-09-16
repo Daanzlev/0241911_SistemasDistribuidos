@@ -92,13 +92,13 @@ func (l *Log) Read(off uint64) (*api.Record, error) {
 	defer l.mu.RUnlock()
 	var s *Segment.Segment
 	for _, segment := range l.segments {
-		if segment.Base <= off && off < segment.next {
+		if segment.Base <= off && off < segment.NextOff {
 			s = segment
 			break
 		}
 	}
 	// START: before
-	if s == nil || s.next <= off {
+	if s == nil || s.NextOff <= off {
 		return nil, fmt.Errorf("offset out of range: %d", off)
 	}
 	// END: before

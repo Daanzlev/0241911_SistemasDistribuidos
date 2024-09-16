@@ -3,7 +3,9 @@ package tests
 import (
 	"io"
 	"lab2/Config"
+	"lab2/Index"
 	"lab2/Segment"
+
 	api "lab2/api/v1"
 	"os"
 	"testing"
@@ -19,11 +21,11 @@ func TestSegment(t *testing.T) {
 
 	c := Config.Config{}
 	c.Segment.MaxStoreBytes = 1024
-	c.Segment.MaxIndexBytes = EntryWidth * 3
+	c.Segment.MaxIndexBytes = Index.EntryWidth * 3
 
 	s, err := Segment.NewSegment(dir, 16, c)
 	require.NoError(t, err)
-	require.Equal(t, uint64(16), s.next, s.next)
+	require.Equal(t, uint64(16), s.NextOff, s.NextOff)
 	require.False(t, s.IsFull())
 
 	for i := uint64(0); i < 3; i++ {
@@ -40,7 +42,7 @@ func TestSegment(t *testing.T) {
 	require.Equal(t, io.EOF, err)
 
 	// maxed index
-	require.True(t, s.IsMaxed())
+	require.True(t, s.IsFull())
 
 	c.Segment.MaxStoreBytes = uint64(len(want.Value) * 3)
 	c.Segment.MaxIndexBytes = 1024
@@ -48,11 +50,11 @@ func TestSegment(t *testing.T) {
 	s, err = Segment.NewSegment(dir, 16, c)
 	require.NoError(t, err)
 	// maxed store
-	require.True(t, s.IsMaxed())
+	require.True(t, s.IsFull())
 
 	err = s.Remove()
 	require.NoError(t, err)
 	s, err = Segment.NewSegment(dir, 16, c)
 	require.NoError(t, err)
-	require.False(t, s.IsMaxed())
+	require.False(t, s.IsFull())
 }

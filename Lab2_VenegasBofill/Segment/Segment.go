@@ -6,7 +6,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"lab2/Config"
 	"lab2/Index"
@@ -16,10 +16,12 @@ import (
 )
 
 type Segment struct {
-	Store      *Store.Store
-	Index      *Index.Index
-	Base, next uint64
-	Config     Config.Config
+	Store   *Store.Store
+	Index   *Index.Index
+	Base    uint64
+	NextOff uint64
+	Config  Config.Config
+	Size    uint64
 }
 
 func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
@@ -51,16 +53,16 @@ func NewSegment(dir string, base uint64, c Config.Config) (*Segment, error) {
 		return nil, err
 	}
 	if off, _, err := s.Index.Read(-1); err != nil {
-		s.next = base
+		s.NextOff = base
 	} else {
-		s.next = base + uint64(off) + 1
+		s.NextOff = base + uint64(off) + 1
 	}
 	return s, nil
 }
 
 // Append agrega un nuevo registro al segmento y devuelve el offset del registro
 func (s *Segment) Append(record *api.Record) (off uint64, err error) {
-	cur := s.next
+	cur := s.NextOff
 	record.Offset = cur
 	p, err := proto.Marshal(record)
 	if err != nil {
@@ -72,12 +74,12 @@ func (s *Segment) Append(record *api.Record) (off uint64, err error) {
 	}
 	if err = s.Index.Write(
 		// index offsets are relative to base offset
-		uint32(s.next-uint64(s.Base)),
+		uint32(s.NextOff-uint64(s.Base)),
 		pos,
 	); err != nil {
 		return 0, err
 	}
-	s.next++
+	s.NextOff++
 	return cur, nil
 }
 
@@ -104,8 +106,8 @@ func (s *Segment) Read(off uint64) (*api.Record, error) {
 
 // IsFull verifica si el segmento ha alcanzado su capacidad máxima
 func (s *Segment) IsFull() bool {
-	return s.Store.size >= s.Config.Segment.MaxStoreBytes ||
-		s.Index.size >= s.Config.Segment.MaxIndexBytes
+	return s.Store.Size >= s.Config.Segment.MaxStoreBytes ||
+		s.Index.Size >= s.Config.Segment.MaxIndexBytes
 }
 
 // Remove elimina el segmento del sistema de archivos
@@ -134,10 +136,4 @@ func (s *Segment) Close() error {
 		return err
 	}
 	return s.Index.Close()
-}
-func Nearest(j, k uint64) uint64 {
-	if j >= 0 {
-		return (j / k) * k
-	}
-	return ((j / k) - 1) * k
 }

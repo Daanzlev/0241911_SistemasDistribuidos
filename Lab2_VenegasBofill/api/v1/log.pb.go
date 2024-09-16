@@ -22,7 +22,7 @@ const (
 
 type Record struct {
 	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	SizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	Value  []byte `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
@@ -124,7 +124,7 @@ func file_api_v1_log_proto_init() {
 			case 0:
 				return &v.state
 			case 1:
-				return &v.sizeCache
+				return &v.SizeCache
 			case 2:
 				return &v.unknownFields
 			default:

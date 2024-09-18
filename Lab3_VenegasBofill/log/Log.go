@@ -1,4 +1,4 @@
-package Log2
+package Log
 
 import (
 	"fmt"
@@ -196,4 +196,7 @@ func (o *originReader) Read(p []byte) (int, error) {
 	n, err := o.ReadAt(p, o.off)
 	o.off += int64(n)
 	return n, err
+}
+func (l *Log) CommitLog(record *api.Record) (uint64, error) {
+	return l.Append(record)
 }

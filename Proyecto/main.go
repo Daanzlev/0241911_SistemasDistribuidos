@@ -24,16 +24,18 @@ var logfile *Log
 var offsetCounter uint64 = 0
 
 func WriteLGHandler(w http.ResponseWriter, r *http.Request) {
-	var record Record
+	var requestData struct {
+		Record Record `json:"record"`
+	}
 
-	// Desmashaleamos el JSON
-	err := json.NewDecoder(r.Body).Decode(&record)
+	// Deserializar el JSON
+	err := json.NewDecoder(r.Body).Decode(&requestData)
 	if err != nil {
 		http.Error(w, "Error desmashaleando el JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Aumentamos el offset
+	record := requestData.Record
 	record.Offset = offsetCounter
 	offsetCounter++
 
@@ -110,7 +112,7 @@ func main() {
 		},
 	}
 
-	logDir := "C:/Users/danyv/OneDrive/Desktop/0241911_SistemasDistribuidos/Proyecto"
+	logDir := "temp/mi_log" // Cambia esto según sea necesario
 	var err error
 	logfile = &Log{}
 

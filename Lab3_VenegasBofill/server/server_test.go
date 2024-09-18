@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	api "lab3/api/v1" // Cambien esto por la ruta en su máquina
+	api "lab3/api/v1" // Cambia esto por la ruta correcta en tu máquina
 	Log "lab3/log"
 
 	"github.com/stretchr/testify/require"
@@ -19,26 +19,23 @@ func TestServer(t *testing.T) {
 	for scenario, fn := range map[string]func(
 		t *testing.T,
 		client api.LogClient,
-		config *Config,
+		param *Parametros,
 	){
-		"produce/consume a message to/from the log succeeeds": testProduceConsume,
-		"produce/consume stream succeeds":                     testProduceConsumeStream,
-		"consume past log boundary fails":                     testConsumePastBoundary,
+		"produce/consume a message to/from the log succeeds": testProduceConsume,
+		"produce/consume stream succeeds":                    testProduceConsumeStream,
+		"consume past log boundary fails":                    testConsumePastBoundary,
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			client, config, teardown := setupTest(t, nil)
+			client, param, teardown := setupTest(t, nil)
 			defer teardown()
-			fn(t, client, config)
+			fn(t, client, param)
 		})
 	}
 }
 
-// END: intro
-
-// START: setup
-func setupTest(t *testing.T, fn func(*Config)) (
+func setupTest(t *testing.T, fn func(*Parametros)) (
 	client api.LogClient,
-	config *Config,
+	param *Parametros,
 	teardown func(),
 ) {
 	t.Helper()
@@ -46,7 +43,7 @@ func setupTest(t *testing.T, fn func(*Config)) (
 	l, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 	clientOptions := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	cc, err := grpc.NewClient(l.Addr().String(), clientOptions...)
+	cc, err := grpc.Dial(l.Addr().String(), clientOptions...)
 	require.NoError(t, err)
 
 	dir, err := os.MkdirTemp("", "server-test")
@@ -55,33 +52,33 @@ func setupTest(t *testing.T, fn func(*Config)) (
 	clog, err := Log.NewLog(dir, Log.Config{})
 	require.NoError(t, err)
 
-	config = &Config{
-		CommitLog: clog,
+	param = &Parametros{
+		Registro: clog,
 	}
 	if fn != nil {
-		fn(config)
+		fn(param)
 	}
-	server, err := newgrpcServer(config)
+	server, err := newgrpcServer(param)
 	require.NoError(t, err)
 
+	gsrv := grpc.NewServer()
+	api.RegisterLogServer(gsrv, server)
+
 	go func() {
-		server.Serve(l)
+		gsrv.Serve(l)
 	}()
 
 	client = api.NewLogClient(cc)
 
-	return client, config, func() {
-		server.Stop()
+	return client, param, func() {
+		gsrv.Stop()
 		cc.Close()
 		l.Close()
 		clog.Remove()
 	}
 }
 
-// END: setup
-
-// START: produceconsume
-func testProduceConsume(t *testing.T, client api.LogClient, config *Config) {
+func testProduceConsume(t *testing.T, client api.LogClient, param *Parametros) {
 	ctx := context.Background()
 
 	want := &api.Record{
@@ -101,16 +98,13 @@ func testProduceConsume(t *testing.T, client api.LogClient, config *Config) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, want.Value, consume.Record.Value)
-	require.Equal(t, want.Offset, consume.Record.Offset)
+	require.Equal(t, produce.Offset, consume.Record.Offset)
 }
 
-// END: produceconsume
-
-// START: consumeerror
 func testConsumePastBoundary(
 	t *testing.T,
 	client api.LogClient,
-	config *Config,
+	param *Parametros,
 ) {
 	ctx := context.Background()
 
@@ -134,13 +128,10 @@ func testConsumePastBoundary(
 	}
 }
 
-// END: consumeerror
-
-// START: stream
 func testProduceConsumeStream(
 	t *testing.T,
 	client api.LogClient,
-	config *Config,
+	param *Parametros,
 ) {
 	ctx := context.Background()
 
@@ -171,7 +162,6 @@ func testProduceConsumeStream(
 				)
 			}
 		}
-
 	}
 
 	{

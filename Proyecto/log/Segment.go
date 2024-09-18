@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	api "lab3/api/v2"
+	api "Proyecto/api/v1"
 )
 
 type Segment struct {

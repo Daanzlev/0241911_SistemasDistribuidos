@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	api "lab2/api/v1"
+	api "Proyecto/api/v1"
 )
 
 type Log struct {
@@ -196,4 +196,7 @@ func (o *originReader) Read(p []byte) (int, error) {
 	n, err := o.ReadAt(p, o.off)
 	o.off += int64(n)
 	return n, err
+}
+func (l *Log) CommitLog(record *api.Record) (uint64, error) {
+	return l.Append(record)
 }

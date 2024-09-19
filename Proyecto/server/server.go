@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	logpkg "Proyecto/api/v1" // Actualiza esta ruta según sea necesario
+	logpkg "Proyecto/api/v1"
 
 	"google.golang.org/grpc"
 )

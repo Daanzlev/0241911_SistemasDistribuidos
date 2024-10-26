@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	tlsconfig "Proyecto/CA"
-	api "Proyecto/api/v1" // Cambia esto por la ruta correcta en tu máquina
+	api "Proyecto/api/v1"
 	"Proyecto/auth"
 	Log "Proyecto/log"
 

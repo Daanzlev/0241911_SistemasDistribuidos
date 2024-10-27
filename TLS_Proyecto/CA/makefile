@@ -1,5 +1,5 @@
 # Esto nos ayuda a posicionar nuestros config files en una carpeta dentro de nuestro proyecto
-CONFIG_PATH=${HOME}/C/Users/danyv/OneDrive/Desktop/0241911_SistemasDistribuidos/TLS_Proyecto/
+CONFIG_PATH=${HOME}/C:/Users/danyv/OneDrive/Desktop/0241911_SistemasDistribuidos/TLS_Proyecto/
 
 .PHONY: init
 

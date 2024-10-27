@@ -1,7 +1,6 @@
 package Log
 
 import (
-	"encoding/binary"
 	"io"
 	"os"
 
@@ -9,29 +8,28 @@ import (
 )
 
 var (
-	OffWidth   uint64 = 4
-	PosWidth   uint64 = 8
-	EntryWidth        = OffWidth + PosWidth
+	offWidth uint64 = 4
+	posWidth uint64 = 8
+	entWidth        = offWidth + posWidth
 )
 
-type Index struct {
+type index struct {
 	file *os.File
 	mmap gommap.MMap
-	Size uint64
+	size uint64
 }
 
-func NewIndex(pf *os.File, c Config) (*Index, error) {
-	idx := &Index{
-		file: pf,
+func newIndex(f *os.File, c Config) (*index, error) {
+	idx := &index{
+		file: f,
 	}
-	fi, err := os.Stat(pf.Name())
+	fi, err := os.Stat(f.Name())
 	if err != nil {
 		return nil, err
 	}
-	// Initialize the Size of the index to the size of the file
-	idx.Size = uint64(fi.Size())
+	idx.size = uint64(fi.Size())
 	if err = os.Truncate(
-		pf.Name(), int64(c.Segment.MaxIndexBytes),
+		f.Name(), int64(c.Segment.MaxIndexBytes),
 	); err != nil {
 		return nil, err
 	}
@@ -45,68 +43,51 @@ func NewIndex(pf *os.File, c Config) (*Index, error) {
 	return idx, nil
 }
 
-// Read reads the offset and position from the index at the given entry number.
-func (i *Index) Read(in int64) (out uint32, pos uint64, err error) {
-	if i.Size == 0 {
-		// The index is empty
-		return 0, 0, io.EOF
-	}
-
-	if in == -1 {
-		// Read the last entry
-		if i.Size < uint64(EntryWidth) {
-			// If the index size is smaller than one entry, no valid entries exist
-			return 0, 0, io.EOF
-		}
-		out = uint32((i.Size / uint64(EntryWidth)) - 1)
-	} else {
-		// Read the specified entry
-		out = uint32(in)
-	}
-
-	pos = uint64(out) * uint64(EntryWidth)
-
-	if pos+uint64(EntryWidth) > i.Size {
-		// The requested position is out of the index range
-		return 0, 0, io.EOF
-	}
-
-	// Read the offset and position from the index
-	out = binary.BigEndian.Uint32(i.mmap[pos : pos+OffWidth])
-	pos = binary.BigEndian.Uint64(i.mmap[pos+OffWidth : pos+EntryWidth])
-
-	return out, pos, nil
-}
-
-// Write writes an offset and position to the index.
-func (i *Index) Write(off uint32, pos uint64) error {
-	if uint64(len(i.mmap)) < i.Size+uint64(EntryWidth) {
-		return io.EOF
-	}
-	// Write the offset and position to the memory map
-	binary.BigEndian.PutUint32(i.mmap[i.Size:i.Size+OffWidth], off)
-	binary.BigEndian.PutUint64(i.mmap[i.Size+OffWidth:i.Size+EntryWidth], pos)
-	i.Size += uint64(EntryWidth)
-	return nil
-}
-
-// Close closes the index, syncing the memory map to the file and truncating it.
-func (i *Index) Close() error {
-	if err := i.mmap.Sync(gommap.MS_SYNC); err != nil {
+func (i *index) Close() error {
+	if err := i.mmap.Sync(gommap.MS_ASYNC); err != nil {
 		return err
 	}
+
 	if err := i.file.Sync(); err != nil {
 		return err
 	}
-	// Truncate the file to the Size of the index.
-	if err := i.file.Truncate(int64(i.Size)); err != nil {
+
+	if err := i.file.Truncate(int64(i.size)); err != nil {
 		return err
 	}
 
-	// Close the file.
 	return i.file.Close()
+
 }
 
-func (i *Index) FileName() string {
+func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
+	if i.size == 0 {
+		return 0, 0, io.EOF
+	}
+	if in == -1 {
+		out = uint32((i.size / entWidth) - 1)
+	} else {
+		out = uint32(in)
+	}
+	pos = uint64(out) * entWidth
+	if i.size < pos+entWidth {
+		return 0, 0, io.EOF
+	}
+	out = enc.Uint32(i.mmap[pos : pos+offWidth])
+	pos = enc.Uint64(i.mmap[pos+offWidth : pos+entWidth])
+	return out, pos, nil
+}
+func (i *index) Write(off uint32, pos uint64) error {
+	if uint64(len(i.mmap)) < i.size+entWidth {
+		return io.EOF
+	}
+
+	enc.PutUint32(i.mmap[i.size:i.size+offWidth], off)
+	enc.PutUint64(i.mmap[i.size+offWidth:i.size+entWidth], pos)
+	i.size += uint64(entWidth)
+	return nil
+}
+
+func (i *index) Name() string {
 	return i.file.Name()
 }

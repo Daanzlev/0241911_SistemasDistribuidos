@@ -1,7 +1,6 @@
 package Log
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -14,14 +13,18 @@ import (
 )
 
 type Log struct {
-	mu            sync.RWMutex
-	Dir           string
-	Config        Config
-	activeSegment *Segment
-	segments      []*Segment
+	mu sync.RWMutex
+
+	Dir    string
+	Config Config
+
+	activeSegment *segment
+	segments      []*segment
 }
 
-// NewLog crea un nuevo registro de log, inicializando los segmentos según la configuración.
+// END: begin
+
+// START: newlog
 func NewLog(dir string, c Config) (*Log, error) {
 	if c.Segment.MaxStoreBytes == 0 {
 		c.Segment.MaxStoreBytes = 1024
@@ -37,7 +40,9 @@ func NewLog(dir string, c Config) (*Log, error) {
 	return l, l.setup()
 }
 
-// setup configura los segmentos del log, creando nuevos si es necesario.
+// END: newlog
+
+// START: setup
 func (l *Log) setup() error {
 	files, err := os.ReadDir(l.Dir)
 	if err != nil {
@@ -45,7 +50,10 @@ func (l *Log) setup() error {
 	}
 	var baseOffsets []uint64
 	for _, file := range files {
-		offStr := strings.TrimSuffix(file.Name(), path.Ext(file.Name()))
+		offStr := strings.TrimSuffix(
+			file.Name(),
+			path.Ext(file.Name()),
+		)
 		off, _ := strconv.ParseUint(offStr, 10, 0)
 		baseOffsets = append(baseOffsets, off)
 	}
@@ -56,18 +64,21 @@ func (l *Log) setup() error {
 		if err = l.newSegment(baseOffsets[i]); err != nil {
 			return err
 		}
+		// baseOffset contains dup for index and store so we skip
+		// the dup
 		i++
 	}
-	if len(l.segments) == 0 {
+	if l.segments == nil {
 		if err = l.newSegment(l.Config.Segment.InitialOffset); err != nil {
 			return err
 		}
 	}
-	l.activeSegment = l.segments[len(l.segments)-1]
 	return nil
 }
 
-// Append agrega un nuevo registro al log.
+// END: setup
+
+// START: append
 func (l *Log) Append(record *api.Record) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -75,34 +86,38 @@ func (l *Log) Append(record *api.Record) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if l.activeSegment.IsFull() {
+	if l.activeSegment.IsMaxed() {
 		err = l.newSegment(off + 1)
 	}
 	return off, err
 }
 
-// Read lee un registro del log a partir de un offset.
+// END: append
+
+// START: read
 func (l *Log) Read(off uint64) (*api.Record, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	var s *Segment
+	var s *segment
 	for _, segment := range l.segments {
-		if segment.Base <= off && off < segment.NextOff {
+		if segment.baseOffset <= off && off < segment.nextOffset {
 			s = segment
 			break
 		}
 	}
 	// START: before
-	if s == nil || s.NextOff <= off {
-		return nil, fmt.Errorf("offset out of range: %d", off)
+	if s == nil || s.nextOffset <= off {
+		return nil, api.ErrOffsetOutOfRange{Offset: off}
 	}
 	// END: before
 	return s.Read(off)
 }
 
-// newSegment crea un nuevo segmento en el log.
+// END: read
+
+// START: newsegment
 func (l *Log) newSegment(off uint64) error {
-	s, err := NewSegment(l.Dir, off, l.Config)
+	s, err := newSegment(l.Dir, off, l.Config)
 	if err != nil {
 		return err
 	}
@@ -111,8 +126,12 @@ func (l *Log) newSegment(off uint64) error {
 	return nil
 }
 
-// Close cierra todos los segmentos del log.
+// END: newsegment
+
+// START: close
 func (l *Log) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	for _, segment := range l.segments {
 		if err := segment.Close(); err != nil {
 			return err
@@ -121,7 +140,6 @@ func (l *Log) Close() error {
 	return nil
 }
 
-// Remove elimina el directorio del log y todos sus segmentos.
 func (l *Log) Remove() error {
 	if err := l.Close(); err != nil {
 		return err
@@ -129,7 +147,6 @@ func (l *Log) Remove() error {
 	return os.RemoveAll(l.Dir)
 }
 
-// Reset reinicia el log, eliminando todos los segmentos y volviendo a configurar.
 func (l *Log) Reset() error {
 	if err := l.Remove(); err != nil {
 		return err
@@ -137,34 +154,34 @@ func (l *Log) Reset() error {
 	return l.setup()
 }
 
-// LowestOffset devuelve el offset más bajo del log.
+// END: close
+
+// START: offsets
 func (l *Log) LowestOffset() (uint64, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	if len(l.segments) == 0 {
-		return 0, fmt.Errorf("no segments available")
-	}
-	return l.segments[0].Base, nil
+	return l.segments[0].baseOffset, nil
 }
 
-// HighestOffset devuelve el offset más alto del log.
 func (l *Log) HighestOffset() (uint64, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	if len(l.segments) == 0 {
+	off := l.segments[len(l.segments)-1].nextOffset
+	if off == 0 {
 		return 0, nil
 	}
-	lastSegment := l.segments[len(l.segments)-1]
-	return lastSegment.Base + lastSegment.Size - 1, nil
+	return off - 1, nil
 }
 
-// Truncate elimina los segmentos del log cuyo offset sea menor que el mínimo especificado.
+// END: offsets
+
+// START: truncate
 func (l *Log) Truncate(lowest uint64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	var segments []*Segment
+	var segments []*segment
 	for _, s := range l.segments {
-		if s.Base+s.Size <= lowest {
+		if s.nextOffset <= lowest+1 {
 			if err := s.Remove(); err != nil {
 				return err
 			}
@@ -176,19 +193,21 @@ func (l *Log) Truncate(lowest uint64) error {
 	return nil
 }
 
-// Reader devuelve un lector que lee desde todos los segmentos del log.
+// END: truncate
+
+// START: reader
 func (l *Log) Reader() io.Reader {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	readers := make([]io.Reader, len(l.segments))
 	for i, segment := range l.segments {
-		readers[i] = &originReader{Store: segment.Store, off: 0}
+		readers[i] = &originReader{segment.store, 0}
 	}
 	return io.MultiReader(readers...)
 }
 
 type originReader struct {
-	*Store
+	*store
 	off int64
 }
 
@@ -197,6 +216,5 @@ func (o *originReader) Read(p []byte) (int, error) {
 	o.off += int64(n)
 	return n, err
 }
-func (l *Log) CommitLog(record *api.Record) (uint64, error) {
-	return l.Append(record)
-}
+
+// END: reader

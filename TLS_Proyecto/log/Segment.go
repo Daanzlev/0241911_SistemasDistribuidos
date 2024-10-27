@@ -4,132 +4,126 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 
 	"google.golang.org/protobuf/proto"
 
 	api "Proyecto/api/v1"
 )
 
-type Segment struct {
-	Store   *Store
-	Index   *Index
-	Base    uint64
-	NextOff uint64
-	Config  Config
-	Size    uint64
+type segment struct {
+	store                  *store
+	index                  *index
+	baseOffset, nextOffset uint64
+	config                 Config
 }
 
-func NewSegment(dir string, base uint64, c Config) (*Segment, error) {
-	s := &Segment{
-		Base:   base,
-		Config: c,
+func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
+	s := &segment{
+		baseOffset: baseOffset,
+		config:     c,
 	}
 	var err error
 	storeFile, err := os.OpenFile(
-		path.Join(dir, fmt.Sprintf("%d%s", base, ".store")),
+		path.Join(dir, fmt.Sprintf("%d%s", baseOffset, ".store")),
 		os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0644,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if s.Store, err = NewStore(storeFile); err != nil {
+	if s.store, err = newStore(storeFile); err != nil {
 		return nil, err
 	}
 	indexFile, err := os.OpenFile(
-		path.Join(dir, fmt.Sprintf("%d%s", base, ".index")),
+		path.Join(dir, fmt.Sprintf("%d%s", baseOffset, ".index")),
 		os.O_RDWR|os.O_CREATE,
 		0644,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if s.Index, err = NewIndex(indexFile, c); err != nil {
+	if s.index, err = newIndex(indexFile, c); err != nil {
 		return nil, err
 	}
-	if off, _, err := s.Index.Read(-1); err != nil {
-		s.NextOff = base
+	if off, _, err := s.index.Read(-1); err != nil {
+		s.nextOffset = baseOffset
 	} else {
-		s.NextOff = base + uint64(off) + 1
+		s.nextOffset = baseOffset + uint64(off) + 1
 	}
+
 	return s, nil
 }
 
-// Append agrega un nuevo registro al segmento y devuelve el offset del registro
-func (s *Segment) Append(record *api.Record) (off uint64, err error) {
-	cur := s.NextOff
+func (s *segment) Append(record *api.Record) (offset uint64, err error) {
+	cur := s.nextOffset
 	record.Offset = cur
 	p, err := proto.Marshal(record)
 	if err != nil {
 		return 0, err
 	}
-	_, pos, err := s.Store.Append(p)
+	_, pos, err := s.store.Append(p)
 	if err != nil {
 		return 0, err
 	}
-	if err = s.Index.Write(
-		// index offsets are relative to base offset
-		uint32(s.NextOff-uint64(s.Base)),
+
+	if err = s.index.Write(
+		// Index offsets are relative to the base offset on the store file
+		uint32(s.nextOffset-uint64(s.baseOffset)),
 		pos,
 	); err != nil {
 		return 0, err
 	}
-	s.NextOff++
+	s.nextOffset++
 	return cur, nil
 }
 
-// Read lee un registro del segmento dado un offset
-func (s *Segment) Read(off uint64) (*api.Record, error) {
-	_, pos, err := s.Index.Read(int64(off - s.Base))
+func (s *segment) Read(off uint64) (*api.Record, error) {
+	_, pos, err := s.index.Read(int64(off - s.baseOffset))
 	if err != nil {
 		return nil, err
 	}
-
-	data := make([]byte, LenWidth)
-	_, err = s.Store.ReadAt(data, int64(pos))
+	p, err := s.store.Read(pos)
 	if err != nil {
 		return nil, err
 	}
-
 	record := &api.Record{}
-	if err := proto.Unmarshal(data, record); err != nil {
-		return nil, err
-	}
-
-	return record, nil
+	err = proto.Unmarshal(p, record)
+	return record, err
 }
 
-// IsFull verifica si el segmento ha alcanzado su capacidad máxima
-func (s *Segment) IsFull() bool {
-	return s.Store.Size >= s.Config.Segment.MaxStoreBytes ||
-		s.Index.Size >= s.Config.Segment.MaxIndexBytes
+func (s *segment) IsMaxed() bool {
+	return s.store.size >= s.config.Segment.MaxStoreBytes || s.index.size >= s.config.Segment.MaxIndexBytes
 }
 
-// Remove elimina el segmento del sistema de archivos
-func (s *Segment) Remove() error {
+func (s *segment) Remove() error {
 	if err := s.Close(); err != nil {
-		return fmt.Errorf("error closing segment: %w", err)
+		return err
+	}
+	if err := os.Remove(s.index.Name()); err != nil {
+		return err
 	}
 
-	storeFilePath := filepath.Join(filepath.Dir(s.Store.FileName()), fmt.Sprintf("%d.store", s.Base))
-	indexFilePath := filepath.Join(filepath.Dir(s.Index.FileName()), fmt.Sprintf("%d.index", s.Base))
-
-	if err := os.Remove(storeFilePath); err != nil {
-		return fmt.Errorf("failed to remove store file: %w", err)
+	if err := os.Remove(s.store.Name()); err != nil {
+		return err
 	}
-
-	if err := os.Remove(indexFilePath); err != nil {
-		return fmt.Errorf("failed to remove index file: %w", err)
-	}
-
 	return nil
 }
 
-// Close cierra los archivos del segmento
-func (s *Segment) Close() error {
-	if err := s.Store.Close(); err != nil {
+func (s *segment) Close() error {
+	if err := s.index.Close(); err != nil {
 		return err
 	}
-	return s.Index.Close()
+
+	if err := s.store.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func nearestMultiple(j, k uint64) uint64 {
+	if j >= 0 {
+		return (j / k) * k
+	}
+	return ((j - k + 1) / k) * k
+
 }

@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	logpkg "Proyecto/api/v1"
+	api "Proyecto/api/v1"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Parametros struct {
-	Registro   CommitLog
+type Config struct {
+	CommitLog  CommitLog
 	Authorizer Authorizer
 }
 
@@ -25,21 +25,21 @@ const (
 	consumeAction  = "consume"
 )
 
-var _ logpkg.LogServer = (*grpcServer)(nil)
+var _ api.LogServer = (*grpcServer)(nil)
 
 type grpcServer struct {
-	logpkg.UnimplementedLogServer
-	Parametros *Parametros
+	api.UnimplementedLogServer
+	*Config
 }
 
-func newgrpcServer(config *Parametros) (srv *grpcServer, err error) {
+func newgrpcServer(config *Config) (srv *grpcServer, err error) {
 	srv = &grpcServer{
-		Parametros: config,
+		Config: config,
 	}
 	return srv, nil
 }
 
-func NewGRPCServer(config *Parametros, opts ...grpc.ServerOption) (*grpc.Server, error) {
+func NewGRPCServer(config *Config, opts ...grpc.ServerOption) (*grpc.Server, error) {
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
 			grpc_auth.StreamServerInterceptor(authenticate),
@@ -51,40 +51,42 @@ func NewGRPCServer(config *Parametros, opts ...grpc.ServerOption) (*grpc.Server,
 	if err != nil {
 		return nil, err
 	}
-	logpkg.RegisterLogServer(gsrv, srv)
+	api.RegisterLogServer(gsrv, srv)
 	return gsrv, nil
 }
-func (s *grpcServer) Produce(ctx context.Context, req *logpkg.ProduceRequest) (*logpkg.ProduceResponse, error) {
-	if err := s.Parametros.Authorizer.Authorize(
+
+func (s *grpcServer) Produce(ctx context.Context, req *api.ProduceRequest) (*api.ProduceResponse, error) {
+
+	if err := s.Authorizer.Authorize(
 		subject(ctx),
 		objectWildcard,
 		produceAction,
 	); err != nil {
 		return nil, err
 	}
-	offset, err := s.Parametros.Registro.Append(req.Record)
+	offset, err := s.CommitLog.Append(req.Record)
 	if err != nil {
 		return nil, err
 	}
-	return &logpkg.ProduceResponse{Offset: offset}, nil
+	return &api.ProduceResponse{Offset: offset}, nil
 }
 
-func (s *grpcServer) Consume(ctx context.Context, req *logpkg.ConsumeRequest) (*logpkg.ConsumeResponse, error) {
-	if err := s.Parametros.Authorizer.Authorize(
+func (s *grpcServer) Consume(ctx context.Context, req *api.ConsumeRequest) (*api.ConsumeResponse, error) {
+	if err := s.Authorizer.Authorize(
 		subject(ctx),
 		objectWildcard,
 		consumeAction,
 	); err != nil {
 		return nil, err
 	}
-	record, err := s.Parametros.Registro.Read(req.Offset)
+	record, err := s.CommitLog.Read(req.Offset)
 	if err != nil {
 		return nil, err
 	}
-	return &logpkg.ConsumeResponse{Record: record}, nil
+	return &api.ConsumeResponse{Record: record}, nil
 }
 
-func (s *grpcServer) ProduceStream(stream logpkg.Log_ProduceStreamServer) error {
+func (s *grpcServer) ProduceStream(stream api.Log_ProduceStreamServer) error {
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -100,7 +102,7 @@ func (s *grpcServer) ProduceStream(stream logpkg.Log_ProduceStreamServer) error 
 	}
 }
 
-func (s *grpcServer) ConsumeStream(req *logpkg.ConsumeRequest, stream logpkg.Log_ConsumeStreamServer) error {
+func (s *grpcServer) ConsumeStream(req *api.ConsumeRequest, stream api.Log_ConsumeStreamServer) error {
 	for {
 		select {
 		case <-stream.Context().Done():
@@ -109,7 +111,7 @@ func (s *grpcServer) ConsumeStream(req *logpkg.ConsumeRequest, stream logpkg.Log
 			res, err := s.Consume(stream.Context(), req)
 			switch err.(type) {
 			case nil:
-			case logpkg.ErrOffsetOutOfRange:
+			case api.ErrOffsetOutOfRange:
 				continue
 			default:
 				return err
@@ -123,8 +125,8 @@ func (s *grpcServer) ConsumeStream(req *logpkg.ConsumeRequest, stream logpkg.Log
 }
 
 type CommitLog interface {
-	Append(*logpkg.Record) (uint64, error)
-	Read(uint64) (*logpkg.Record, error)
+	Append(*api.Record) (uint64, error)
+	Read(uint64) (*api.Record, error)
 }
 
 type Authorizer interface {
@@ -157,3 +159,4 @@ func subject(ctx context.Context) string {
 }
 
 type subjectContextKey struct{}
+

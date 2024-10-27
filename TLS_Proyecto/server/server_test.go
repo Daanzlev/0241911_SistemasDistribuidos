@@ -9,7 +9,7 @@ import (
 	tlsconfig "Proyecto/CA"
 	api "Proyecto/api/v1"
 	"Proyecto/auth"
-	Log "Proyecto/log"
+	log "Proyecto/log"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -23,7 +23,7 @@ func TestServer(t *testing.T) {
 		t *testing.T,
 		rootClient api.LogClient,
 		nobodyClient api.LogClient,
-		config *Parametros,
+		config *Config,
 	){
 		"produce/consume a message to/from the log succeeeds": testProduceConsume,
 		"produce/consume stream succeeds":                     testProduceConsumeStream,
@@ -41,10 +41,10 @@ func TestServer(t *testing.T) {
 // END: intro
 
 // START: setup
-func setupTest(t *testing.T, fn func(*Parametros)) (
+func setupTest(t *testing.T, fn func(*Config)) (
 	rootClient api.LogClient,
 	nobodyClient api.LogClient,
-	config *Parametros,
+	config *Config,
 	teardown func(),
 ) {
 	t.Helper()
@@ -97,13 +97,13 @@ func setupTest(t *testing.T, fn func(*Parametros)) (
 	dir, err := os.MkdirTemp("", "server-test")
 	require.NoError(t, err)
 
-	clog, err := Log.NewLog(dir, Log.Config{})
+	clog, err := log.NewLog(dir, log.Config{})
 	require.NoError(t, err)
 
 	authorizer := auth.New(tlsconfig.ACLModelFile, tlsconfig.ACLPolicyFile)
 
-	config = &Parametros{
-		Registro:   clog,
+	config = &Config{
+		CommitLog:  clog,
 		Authorizer: authorizer,
 	}
 	if fn != nil {
@@ -127,7 +127,7 @@ func setupTest(t *testing.T, fn func(*Parametros)) (
 // END: setup
 
 // START: produceconsume
-func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Parametros) {
+func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Config) {
 	ctx := context.Background()
 
 	want := &api.Record{
@@ -154,7 +154,7 @@ func testProduceConsume(t *testing.T, client, _ api.LogClient, config *Parametro
 
 // START: consumeerror
 func testConsumePastBoundary(
-	t *testing.T, client, _ api.LogClient, config *Parametros,
+	t *testing.T, client, _ api.LogClient, config *Config,
 ) {
 	ctx := context.Background()
 
@@ -182,7 +182,7 @@ func testConsumePastBoundary(
 
 // START: stream
 func testProduceConsumeStream(
-	t *testing.T, client, _ api.LogClient, config *Parametros,
+	t *testing.T, client, _ api.LogClient, config *Config,
 ) {
 	ctx := context.Background()
 
@@ -235,7 +235,7 @@ func testProduceConsumeStream(
 }
 
 func testUnauthorized(
-	t *testing.T, _, client api.LogClient, config *Parametros,
+	t *testing.T, _, client api.LogClient, config *Config,
 ) {
 	ctx := context.Background()
 	produce, err := client.Produce(ctx, &api.ProduceRequest{

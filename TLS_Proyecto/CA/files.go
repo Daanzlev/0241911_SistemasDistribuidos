@@ -27,5 +27,5 @@ func configFile(filename string) string {
 	}
 
 	// modify this
-	return filepath.Join(homeDir, "C:/Users/danyv/OneDrive/Desktop/0241911_SistemasDistribuidos/TLS_Proyecto/.TLS_Proyecto", filename)
+	return filepath.Join(homeDir, "0241911_SistemasDistribuidos", "TLS_Proyecto", "CA", filename)
 }

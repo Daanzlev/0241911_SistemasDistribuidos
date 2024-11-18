@@ -1,0 +1,18 @@
+# Usa una imagen base con la versión de Go que necesitas
+FROM golang:1.23.1-alpine
+
+# Configura el directorio de trabajo
+WORKDIR /app
+
+# Copia los archivos go.mod y go.sum
+COPY go.mod . 
+COPY go.sum .
+
+# Descarga las dependencias
+RUN go mod download
+
+# Copia el resto del código
+COPY . .
+
+# Comando para ejecutar la aplicación
+CMD ["go", "run", "main.go"]
